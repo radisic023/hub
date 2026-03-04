@@ -2,6 +2,20 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+	DndContext,
+	type DragEndEvent,
+	PointerSensor,
+	useSensor,
+	useSensors,
+} from "@dnd-kit/core";
+import {
+	SortableContext,
+	useSortable,
+	arrayMove,
+	rectSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -36,7 +50,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Key, Plus, Pencil, Trash2, Eye } from "lucide-react";
+import { Key, Plus, Pencil, Trash2, Eye, GripVertical } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -45,6 +59,7 @@ import {
 	createApi,
 	updateApi,
 	deleteApi,
+	updateApiOrder,
 	getDecryptedCode,
 	type ApiInput,
 } from "./actions";
@@ -67,9 +82,98 @@ type Api = {
 	header_code_encrypted: string | null;
 	body_code_encrypted: string | null;
 	header_display?: string | null;
+	body_display?: string | null;
 	code_display?: string | null;
 	created_at: string;
 };
+
+function SortableApiCard({
+	a,
+	onCopy,
+	onEdit,
+	onDelete,
+}: {
+	a: Api;
+	onCopy: (a: Api) => void;
+	onEdit: (a: Api) => void;
+	onDelete: (id: string) => void;
+}) {
+	const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+		useSortable({ id: a.id });
+
+	const style = {
+		transform: CSS.Transform.toString(transform),
+		transition,
+	};
+
+	return (
+		<Card
+			ref={setNodeRef}
+			style={style}
+			className={isDragging ? "opacity-50 shadow-lg" : ""}
+		>
+			<CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+				<div className="flex items-center gap-2 min-w-0">
+					<button
+						type="button"
+						className="cursor-grab active:cursor-grabbing touch-none p-0.5 rounded hover:bg-muted text-muted-foreground shrink-0"
+						{...listeners}
+						{...attributes}
+					>
+						<GripVertical className="h-4 w-4" />
+					</button>
+					<CardTitle className="text-base truncate">{a.name}</CardTitle>
+				</div>
+				<div className="flex gap-1 shrink-0">
+					<Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onCopy(a)} title="Copy code(s)">
+						<Eye className="h-4 w-4" />
+					</Button>
+					<Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit(a)}>
+						<Pencil className="h-4 w-4" />
+					</Button>
+					<Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => onDelete(a.id)}>
+						<Trash2 className="h-4 w-4" />
+					</Button>
+				</div>
+			</CardHeader>
+			<CardContent>
+				<div className="space-y-3 text-sm">
+					<p>
+						<span className="text-muted-foreground">Type:</span>{" "}
+						{a.type === "simple" ? "Simple" : "Header & Body"}
+					</p>
+					{a.type === "simple" ? (
+						<div>
+							<p className="text-muted-foreground mb-1.5 text-xs font-medium">Code</p>
+							<pre className="rounded-lg border border-border/50 bg-muted/80 p-3 overflow-x-auto text-[13px] font-mono leading-relaxed">
+								<code className="text-foreground">{a.code_display ?? "••••••••"}</code>
+							</pre>
+						</div>
+					) : (
+						<div className="space-y-3">
+							{a.header_code_encrypted && (
+								<div>
+									<p className="text-muted-foreground mb-1.5 text-xs font-medium">Header</p>
+									<pre className="rounded-lg border border-border/50 bg-muted/80 p-3 overflow-x-auto text-[13px] font-mono leading-relaxed whitespace-pre-wrap break-words">
+										<code className="text-foreground">{a.header_display ?? "••••••••"}</code>
+									</pre>
+								</div>
+							)}
+							{a.body_code_encrypted && (
+								<div>
+									<p className="text-muted-foreground mb-1.5 text-xs font-medium">Body</p>
+									<pre className="rounded-lg border border-border/50 bg-muted/80 p-3 overflow-x-auto text-[13px] font-mono leading-relaxed whitespace-pre-wrap break-words">
+										<code className="text-foreground">{a.body_display ?? "••••••••"}</code>
+									</pre>
+								</div>
+							)}
+						</div>
+					)}
+				</div>
+			</CardContent>
+		</Card>
+	);
+}
 
 export default function ApisPage() {
 	const router = useRouter();
@@ -94,6 +198,10 @@ export default function ApisPage() {
 
 	const apiType = form.watch("type");
 
+	const sensors = useSensors(
+		useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+	);
+
 	const loadData = useCallback(async () => {
 		try {
 			const { data } = await loadApis();
@@ -106,6 +214,23 @@ export default function ApisPage() {
 	useEffect(() => {
 		loadData();
 	}, [loadData]);
+
+	async function handleDragEnd(event: DragEndEvent) {
+		const { active, over } = event;
+		if (!over || active.id === over.id) return;
+		const oldIndex = apis.findIndex((a) => a.id === active.id);
+		const newIndex = apis.findIndex((a) => a.id === over.id);
+		if (oldIndex === -1 || newIndex === -1) return;
+		const reordered = arrayMove(apis, oldIndex, newIndex);
+		setApis(reordered);
+		const { error } = await updateApiOrder(reordered.map((a) => a.id));
+		if (error) {
+			toast.error(error);
+			setApis(apis);
+		} else {
+			toast.success("Order updated");
+		}
+	}
 
 	async function onSubmit(values: ApiFormValues) {
 		if (!editId) {
@@ -365,60 +490,21 @@ export default function ApisPage() {
 					</CardContent>
 				</Card>
 			) : (
-				<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-					{apis.map((a) => (
-						<Card key={a.id}>
-							<CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-								<CardTitle className="text-base">{a.name}</CardTitle>
-								<div className="flex gap-1">
-									<Button
-										variant="ghost"
-										size="icon"
-										className="h-8 w-8"
-										onClick={() => handleCopyCode(a)}
-										title="Copy code(s)"
-									>
-										<Eye className="h-4 w-4" />
-									</Button>
-									<Button
-										variant="ghost"
-										size="icon"
-										className="h-8 w-8"
-										onClick={() => openEdit(a)}
-									>
-										<Pencil className="h-4 w-4" />
-									</Button>
-									<Button
-										variant="ghost"
-										size="icon"
-										className="h-8 w-8 text-destructive"
-										onClick={() => openDelete(a.id)}
-									>
-										<Trash2 className="h-4 w-4" />
-									</Button>
-								</div>
-							</CardHeader>
-							<CardContent>
-								<div className="space-y-2 text-sm">
-									<p>
-										<span className="text-muted-foreground">Type:</span>{" "}
-										{a.type === "simple" ? "Simple" : "Header & Body"}
-									</p>
-									<p className="text-muted-foreground">
-										{a.type === "simple"
-											? (a.code_display != null ? `Code: ${a.code_display}` : "Code: ••••••••")
-											: [
-													a.header_code_encrypted && (a.header_display != null ? `Header: ${a.header_display}` : "Header: ••••••••"),
-													a.body_code_encrypted && "Body: ••••••••",
-												]
-													.filter(Boolean)
-													.join(" | ") || "—"}
-									</p>
-								</div>
-							</CardContent>
-						</Card>
-					))}
-				</div>
+				<DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+					<SortableContext items={apis.map((a) => a.id)} strategy={rectSortingStrategy}>
+						<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+							{apis.map((a) => (
+								<SortableApiCard
+									key={a.id}
+									a={a}
+									onCopy={handleCopyCode}
+									onEdit={openEdit}
+									onDelete={openDelete}
+								/>
+							))}
+						</div>
+					</SortableContext>
+				</DndContext>
 			)}
 
 			<Dialog open={deleteDialogOpen} onOpenChange={(o) => { setDeleteDialogOpen(o); if (!o) setDeleteApiId(null); }}>

@@ -13,6 +13,7 @@ export type AccountData = {
 	password_encrypted: string;
 	icon_url: string | null;
 	created_at: string;
+	sort_order?: number;
 };
 
 const ACCOUNT_ICONS_PREFIX = "account_icons/";
@@ -25,8 +26,9 @@ export async function loadAccounts() {
 	const admin = createAdminClient();
 	const { data: rows, error } = await admin
 		.from("accounts")
-		.select("id, link, username, email, password_encrypted, icon_url, created_at")
+		.select("id, link, username, email, password_encrypted, icon_url, created_at, sort_order")
 		.eq("user_id", user.id)
+		.order("sort_order", { ascending: true })
 		.order("created_at", { ascending: false });
 
 	if (error) return { data: [], error: error.message };
@@ -152,6 +154,24 @@ export async function updateAccount(id: string, formData: FormData) {
 		.eq("user_id", user.id);
 
 	if (error) return { error: error.message };
+	revalidatePath("/dashboard");
+	revalidatePath("/accounts");
+	return { error: null };
+}
+
+export async function updateAccountOrder(ids: string[]) {
+	const supabase = await createClient();
+	const { data: { user } } = await supabase.auth.getUser();
+	if (!user) return { error: "Unauthorized" };
+
+	for (let i = 0; i < ids.length; i++) {
+		const { error } = await supabase
+			.from("accounts")
+			.update({ sort_order: i })
+			.eq("id", ids[i])
+			.eq("user_id", user.id);
+		if (error) return { error: error.message };
+	}
 	revalidatePath("/dashboard");
 	revalidatePath("/accounts");
 	return { error: null };

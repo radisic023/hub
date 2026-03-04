@@ -2,6 +2,20 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+	DndContext,
+	type DragEndEvent,
+	PointerSensor,
+	useSensor,
+	useSensors,
+} from "@dnd-kit/core";
+import {
+	SortableContext,
+	useSortable,
+	arrayMove,
+	rectSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -28,7 +42,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { Server, Plus, Pencil, Trash2, Eye } from "lucide-react";
+import { Server, Plus, Pencil, Trash2, Eye, GripVertical } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -37,6 +51,7 @@ import {
 	createMachine,
 	updateMachine,
 	deleteMachine,
+	updateMachineOrder,
 	getDecryptedPassword,
 	type MachineInput,
 } from "./actions";
@@ -56,8 +71,74 @@ type Machine = {
 	username: string;
 	password_encrypted: string;
 	port: number;
+	sort_order?: number;
 	created_at: string;
 };
+
+function SortableMachineCard({
+	m,
+	onCopy,
+	onEdit,
+	onDelete,
+}: {
+	m: Machine;
+	onCopy: (id: string) => void;
+	onEdit: (m: Machine) => void;
+	onDelete: (id: string) => void;
+}) {
+	const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+		useSortable({ id: m.id });
+
+	const style = {
+		transform: CSS.Transform.toString(transform),
+		transition,
+	};
+
+	return (
+		<Card ref={setNodeRef} style={style} className={isDragging ? "opacity-50 shadow-lg" : ""}>
+			<CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+				<div className="flex items-center gap-2 min-w-0">
+					<button
+						type="button"
+						className="cursor-grab active:cursor-grabbing touch-none p-0.5 rounded hover:bg-muted text-muted-foreground shrink-0"
+						{...listeners}
+						{...attributes}
+					>
+						<GripVertical className="h-4 w-4" />
+					</button>
+					<CardTitle className="text-base truncate">{m.title?.trim() || m.hostname}</CardTitle>
+				</div>
+				<div className="flex gap-1 shrink-0">
+					<Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onCopy(m.id)} title="Copy password">
+						<Eye className="h-4 w-4" />
+					</Button>
+					<Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit(m)}>
+						<Pencil className="h-4 w-4" />
+					</Button>
+					<Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => onDelete(m.id)}>
+						<Trash2 className="h-4 w-4" />
+					</Button>
+				</div>
+			</CardHeader>
+			<CardContent>
+				<div className="space-y-2 text-sm">
+					{m.title?.trim() && (
+						<p>
+							<span className="text-muted-foreground">Hostname:</span> {m.hostname}
+						</p>
+					)}
+					<p>
+						<span className="text-muted-foreground">Username:</span> {m.username}
+					</p>
+					<p>
+						<span className="text-muted-foreground">Port:</span> {m.port}
+					</p>
+					<p className="text-muted-foreground">Password: ••••••••</p>
+				</div>
+			</CardContent>
+		</Card>
+	);
+}
 
 export default function MachinesPage() {
 	const router = useRouter();
@@ -80,6 +161,10 @@ export default function MachinesPage() {
 		},
 	});
 
+	const sensors = useSensors(
+		useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+	);
+
 	const loadData = useCallback(async () => {
 		try {
 			const { data } = await loadMachines();
@@ -92,6 +177,23 @@ export default function MachinesPage() {
 	useEffect(() => {
 		loadData();
 	}, [loadData]);
+
+	async function handleDragEnd(event: DragEndEvent) {
+		const { active, over } = event;
+		if (!over || active.id === over.id) return;
+		const oldIndex = machines.findIndex((m) => m.id === active.id);
+		const newIndex = machines.findIndex((m) => m.id === over.id);
+		if (oldIndex === -1 || newIndex === -1) return;
+		const reordered = arrayMove(machines, oldIndex, newIndex);
+		setMachines(reordered);
+		const { error } = await updateMachineOrder(reordered.map((m) => m.id));
+		if (error) {
+			toast.error(error);
+			setMachines(machines);
+		} else {
+			toast.success("Order updated");
+		}
+	}
 
 	async function onSubmit(values: z.infer<typeof formSchema>) {
 		const input: MachineInput = {
@@ -291,58 +393,21 @@ export default function MachinesPage() {
 					</CardContent>
 				</Card>
 			) : (
-				<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-					{machines.map((m) => (
-						<Card key={m.id}>
-							<CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-								<CardTitle className="text-base">{m.title?.trim() || m.hostname}</CardTitle>
-								<div className="flex gap-1">
-									<Button
-										variant="ghost"
-										size="icon"
-										className="h-8 w-8"
-										onClick={() => handleCopyPassword(m.id)}
-										title="Copy password"
-									>
-										<Eye className="h-4 w-4" />
-									</Button>
-									<Button
-										variant="ghost"
-										size="icon"
-										className="h-8 w-8"
-										onClick={() => openEdit(m)}
-									>
-										<Pencil className="h-4 w-4" />
-									</Button>
-									<Button
-										variant="ghost"
-										size="icon"
-										className="h-8 w-8 text-destructive"
-										onClick={() => openDelete(m.id)}
-									>
-										<Trash2 className="h-4 w-4" />
-									</Button>
-								</div>
-							</CardHeader>
-							<CardContent>
-								<div className="space-y-2 text-sm">
-									{m.title?.trim() && (
-										<p>
-											<span className="text-muted-foreground">Hostname:</span> {m.hostname}
-										</p>
-									)}
-									<p>
-										<span className="text-muted-foreground">Username:</span> {m.username}
-									</p>
-									<p>
-										<span className="text-muted-foreground">Port:</span> {m.port}
-									</p>
-									<p className="text-muted-foreground">Password: ••••••••</p>
-								</div>
-							</CardContent>
-						</Card>
-					))}
-				</div>
+				<DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+					<SortableContext items={machines.map((m) => m.id)} strategy={rectSortingStrategy}>
+						<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+							{machines.map((m) => (
+								<SortableMachineCard
+									key={m.id}
+									m={m}
+									onCopy={handleCopyPassword}
+									onEdit={openEdit}
+									onDelete={openDelete}
+								/>
+							))}
+						</div>
+					</SortableContext>
+				</DndContext>
 			)}
 
 			<Dialog open={deleteDialogOpen} onOpenChange={(o) => { setDeleteDialogOpen(o); if (!o) setDeleteMachineId(null); }}>

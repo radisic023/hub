@@ -14,9 +14,12 @@ export type ApiData = {
 	body_code_encrypted: string | null;
 	/** Decrypted header value for display (only for header_body, when header is set) */
 	header_display?: string | null;
+	/** Decrypted body value for display (only for header_body, when body is set) */
+	body_display?: string | null;
 	/** Decrypted code for display (only for simple type) */
 	code_display?: string | null;
 	created_at: string;
+	sort_order?: number;
 };
 
 export async function loadApis() {
@@ -27,8 +30,9 @@ export async function loadApis() {
 	const admin = createAdminClient();
 	const { data, error } = await admin
 		.from("apis")
-		.select("id, name, type, code_encrypted, header_code_encrypted, body_code_encrypted, created_at")
+		.select("id, name, type, code_encrypted, header_code_encrypted, body_code_encrypted, created_at, sort_order")
 		.eq("user_id", user.id)
+		.order("sort_order", { ascending: true })
 		.order("created_at", { ascending: false });
 
 	if (error) return { data: [], error: error.message };
@@ -41,11 +45,20 @@ export async function loadApis() {
 				row.code_display = null;
 			}
 		}
-		if (row.type === "header_body" && row.header_code_encrypted) {
-			try {
-				row.header_display = decrypt(row.header_code_encrypted);
-			} catch {
-				row.header_display = null;
+		if (row.type === "header_body") {
+			if (row.header_code_encrypted) {
+				try {
+					row.header_display = decrypt(row.header_code_encrypted);
+				} catch {
+					row.header_display = null;
+				}
+			}
+			if (row.body_code_encrypted) {
+				try {
+					row.body_display = decrypt(row.body_code_encrypted);
+				} catch {
+					row.body_display = null;
+				}
 			}
 		}
 	}
@@ -141,6 +154,24 @@ export async function updateApi(
 		.eq("user_id", user.id);
 
 	if (error) return { error: error.message };
+	revalidatePath("/dashboard");
+	revalidatePath("/apis");
+	return { error: null };
+}
+
+export async function updateApiOrder(ids: string[]) {
+	const supabase = await createClient();
+	const { data: { user } } = await supabase.auth.getUser();
+	if (!user) return { error: "Unauthorized" };
+
+	for (let i = 0; i < ids.length; i++) {
+		const { error } = await supabase
+			.from("apis")
+			.update({ sort_order: i })
+			.eq("id", ids[i])
+			.eq("user_id", user.id);
+		if (error) return { error: error.message };
+	}
 	revalidatePath("/dashboard");
 	revalidatePath("/apis");
 	return { error: null };

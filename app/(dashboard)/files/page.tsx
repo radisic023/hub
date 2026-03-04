@@ -43,6 +43,7 @@ import {
 	Archive,
 	GripVertical,
 	FileArchive,
+	Search,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -50,6 +51,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
 	loadFiles,
+	loadAllFiles,
 	loadAllFolders,
 	createFolder,
 	uploadFileServer,
@@ -154,7 +156,15 @@ export default function FilesPage() {
 	const [allFolders, setAllFolders] = useState<{ id: string; name: string; folder_id: string | null }[]>([]);
 	const [draggingId, setDraggingId] = useState<string | null>(null);
 	const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+	const [searchQuery, setSearchQuery] = useState("");
+	const [allFilesForSearch, setAllFilesForSearch] = useState<FileItem[]>([]);
+	const [searchLoading, setSearchLoading] = useState(false);
 	const gridRef = useRef<HTMLDivElement>(null);
+
+	const q = searchQuery.trim().toLowerCase();
+	const filteredItems = q
+		? allFilesForSearch.filter((i) => i.name.toLowerCase().includes(q))
+		: items;
 
 	const form = useForm<z.infer<typeof formSchema>>({
 		resolver: zodResolver(formSchema),
@@ -177,6 +187,23 @@ export default function FilesPage() {
 	useEffect(() => {
 		loadItems();
 	}, [loadItems]);
+
+	useEffect(() => {
+		if (!userId || !searchQuery.trim()) {
+			setAllFilesForSearch([]);
+			return;
+		}
+		let cancelled = false;
+		setSearchLoading(true);
+		loadAllFiles(userId).then(({ data }) => {
+			if (!cancelled) {
+				setAllFilesForSearch((data as FileItem[]) ?? []);
+			}
+		}).finally(() => {
+			if (!cancelled) setSearchLoading(false);
+		});
+		return () => { cancelled = true; };
+	}, [userId, searchQuery.trim()]);
 
 	async function onSubmitFolder(values: z.infer<typeof formSchema>) {
 		const { error } = await createFolder(values.name, currentFolderId ?? undefined);
@@ -331,6 +358,7 @@ export default function FilesPage() {
 	}
 
 	function openFolder(id: string, name: string) {
+		if (searchQuery.trim()) setSearchQuery("");
 		setCurrentFolderId(id);
 		setBreadcrumb((prev) => [...prev, { id, name }]);
 	}
@@ -359,13 +387,13 @@ export default function FilesPage() {
 		setSelectedIds(new Set());
 	}
 
-	const selectedItems = items.filter((i) => selectedIds.has(i.id));
+	const selectedItems = filteredItems.filter((i) => selectedIds.has(i.id));
 	const selectedFiles = selectedItems.filter((i) => !i.is_folder);
 	const hasSelection = selectedIds.size > 0;
 
 	async function handleDownloadAsZip(ids: string[]) {
 		if (!ids.length) return;
-		const fileItems = items.filter((i) => !i.is_folder && ids.includes(i.id));
+		const fileItems = filteredItems.filter((i) => !i.is_folder && ids.includes(i.id));
 		if (!fileItems.length) {
 			toast.error("No files to compress");
 			return;
@@ -595,6 +623,18 @@ export default function FilesPage() {
 				</div>
 			)}
 
+			{items.length > 0 && (
+				<div className="relative">
+					<Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+					<Input
+						placeholder="Search files..."
+						value={searchQuery}
+						onChange={(e) => setSearchQuery(e.target.value)}
+						className="pl-9 max-w-sm"
+					/>
+				</div>
+			)}
+
 			{loading ? (
 				<p className="text-muted-foreground">Loading...</p>
 			) : items.length === 0 ? (
@@ -623,6 +663,20 @@ export default function FilesPage() {
 								</label>
 							</Button>
 						</div>
+					</CardContent>
+				</Card>
+			) : searchQuery.trim() && !searchLoading && filteredItems.length === 0 ? (
+				<Card>
+					<CardContent className="py-12 text-center">
+						<Search className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+						<p className="text-muted-foreground">No files match &quot;{searchQuery}&quot;</p>
+					</CardContent>
+				</Card>
+			) : searchQuery.trim() && searchLoading && allFilesForSearch.length === 0 ? (
+				<Card>
+					<CardContent className="py-12 text-center">
+						<Search className="mx-auto mb-3 h-10 w-10 text-muted-foreground animate-pulse" />
+						<p className="text-muted-foreground">Searching...</p>
 					</CardContent>
 				</Card>
 			) : (
@@ -655,7 +709,7 @@ export default function FilesPage() {
 					className="grid gap-2 md:grid-cols-2 lg:grid-cols-4"
 					onClick={handleGridClick}
 				>
-					{items.map((item) => {
+					{filteredItems.map((item) => {
 						const isImage = /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(item.name);
 						const isVideo = /\.(mp4|webm|mov|avi|mkv|m4v|ogg)$/i.test(item.name);
 						const isPdfOrDoc = /\.(pdf|doc|docx)$/i.test(item.name);

@@ -2,6 +2,20 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+	DndContext,
+	type DragEndEvent,
+	PointerSensor,
+	useSensor,
+	useSensors,
+} from "@dnd-kit/core";
+import {
+	SortableContext,
+	useSortable,
+	arrayMove,
+	rectSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -35,7 +49,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { CreditCard, Plus, Pencil, Trash2, Eye } from "lucide-react";
+import { CreditCard, Plus, Pencil, Trash2, Eye, GripVertical } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -44,6 +58,7 @@ import {
 	createAccount,
 	updateAccount,
 	deleteAccount,
+	updateAccountOrder,
 	getDecryptedPassword,
 } from "./actions";
 
@@ -73,8 +88,93 @@ type Account = {
 	email: string | null;
 	password_encrypted: string;
 	icon_url: string | null;
+	sort_order?: number;
 	created_at: string;
 };
+
+function SortableAccountCard({
+	a,
+	onCopy,
+	onEdit,
+	onDelete,
+}: {
+	a: Account;
+	onCopy: (id: string) => void;
+	onEdit: (a: Account) => void;
+	onDelete: (id: string) => void;
+}) {
+	const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+		useSortable({ id: a.id });
+
+	const style = {
+		transform: CSS.Transform.toString(transform),
+		transition,
+	};
+
+	return (
+		<Card ref={setNodeRef} style={style} className={isDragging ? "opacity-50 shadow-lg" : ""}>
+			<CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+				<div className="flex items-center gap-2 min-w-0">
+					<button
+						type="button"
+						className="cursor-grab active:cursor-grabbing touch-none p-0.5 rounded hover:bg-muted text-muted-foreground shrink-0"
+						{...listeners}
+						{...attributes}
+					>
+						<GripVertical className="h-4 w-4" />
+					</button>
+					<div className="flex items-center gap-2 min-w-0 flex-1">
+						<div className="relative h-8 w-8 shrink-0 flex items-center justify-center bg-muted rounded">
+							{a.icon_url ? (
+								// eslint-disable-next-line @next/next/no-img-element -- account icon from storage
+								<img
+									src={a.icon_url}
+									alt=""
+									className="h-5.5 w-5.5"
+									onError={(e) => {
+										e.currentTarget.style.display = "none";
+										const fallback = e.currentTarget.nextElementSibling;
+										if (fallback) (fallback as HTMLElement).style.display = "flex";
+									}}
+								/>
+							) : null}
+							<span
+								className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary"
+								style={a.icon_url ? { display: "none" } : undefined}
+								aria-hidden
+							>
+								{a.link.charAt(0).toUpperCase()}
+							</span>
+						</div>
+						<CardTitle className="text-base truncate">{a.link}</CardTitle>
+					</div>
+				</div>
+				<div className="flex gap-1 shrink-0">
+					<Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onCopy(a.id)} title="Copy password">
+						<Eye className="h-4 w-4" />
+					</Button>
+					<Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit(a)}>
+						<Pencil className="h-4 w-4" />
+					</Button>
+					<Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => onDelete(a.id)}>
+						<Trash2 className="h-4 w-4" />
+					</Button>
+				</div>
+			</CardHeader>
+			<CardContent>
+				<div className="space-y-2 text-sm">
+					<p>
+						<span className="text-muted-foreground">
+							{a.username ? "Username" : "E-mail"}:
+						</span>{" "}
+						{a.username ?? a.email}
+					</p>
+					<p className="text-muted-foreground">Password: ••••••••</p>
+				</div>
+			</CardContent>
+		</Card>
+	);
+}
 
 export default function AccountsPage() {
 	const router = useRouter();
@@ -167,6 +267,25 @@ export default function AccountsPage() {
 		toast.success("Account deleted");
 		router.refresh();
 		await loadData();
+	}
+
+	const sensors = useSensors(
+		useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+	);
+
+	async function handleDragEnd(event: DragEndEvent) {
+		const { active, over } = event;
+		if (!over || active.id === over.id) return;
+		const oldIndex = accounts.findIndex((a) => a.id === active.id);
+		const newIndex = accounts.findIndex((a) => a.id === over.id);
+		if (oldIndex === -1 || newIndex === -1) return;
+		const reordered = arrayMove(accounts, oldIndex, newIndex);
+		setAccounts(reordered);
+		const { error } = await updateAccountOrder(reordered.map((a) => a.id));
+		if (error) {
+			toast.error(error);
+			setAccounts(accounts);
+		}
 	}
 
 	async function handleShowPassword(id: string) {
@@ -361,77 +480,24 @@ export default function AccountsPage() {
 					</CardContent>
 				</Card>
 			) : (
-				<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-					{accounts.map((a) => (
-						<Card key={a.id}>
-							<CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-								<div className="flex items-center gap-2 min-w-0">
-									<div className="relative h-8 w-8 shrink-0">
-										{a.icon_url ? (
-											// eslint-disable-next-line @next/next/no-img-element -- account icon from storage
-											<img
-												src={a.icon_url}
-												alt=""
-												className="h-8 w-8 rounded object-cover bg-muted"
-												onError={(e) => {
-													e.currentTarget.style.display = "none";
-													const fallback = e.currentTarget.nextElementSibling;
-													if (fallback) (fallback as HTMLElement).style.display = "flex";
-												}}
-											/>
-										) : null}
-										<span
-											className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary"
-											style={a.icon_url ? { display: "none" } : undefined}
-											aria-hidden
-										>
-											{a.link.charAt(0).toUpperCase()}
-										</span>
-									</div>
-									<CardTitle className="text-base truncate">{a.link}</CardTitle>
-								</div>
-								<div className="flex gap-1">
-									<Button
-										variant="ghost"
-										size="icon"
-										className="h-8 w-8"
-										onClick={() => handleShowPassword(a.id)}
-										title="Copy password"
-									>
-										<Eye className="h-4 w-4" />
-									</Button>
-									<Button
-										variant="ghost"
-										size="icon"
-										className="h-8 w-8"
-										onClick={() => openEdit(a)}
-									>
-										<Pencil className="h-4 w-4" />
-									</Button>
-									<Button
-										variant="ghost"
-										size="icon"
-										className="h-8 w-8 text-destructive"
-										onClick={() => openDeleteDialog(a.id)}
-									>
-										<Trash2 className="h-4 w-4" />
-									</Button>
-								</div>
-							</CardHeader>
-							<CardContent>
-								<div className="space-y-2 text-sm">
-									<p>
-										<span className="text-muted-foreground">
-											{a.username ? "Username" : "E-mail"}:
-										</span>{" "}
-										{a.username ?? a.email}
-									</p>
-									<p className="text-muted-foreground">Password: ••••••••</p>
-								</div>
-							</CardContent>
-						</Card>
-					))}
-				</div>
+				<DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+					<SortableContext
+						items={accounts.map((a) => a.id)}
+						strategy={rectSortingStrategy}
+					>
+						<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+							{accounts.map((a) => (
+								<SortableAccountCard
+									key={a.id}
+									a={a}
+									onCopy={handleShowPassword}
+									onEdit={openEdit}
+									onDelete={openDeleteDialog}
+								/>
+							))}
+						</div>
+					</SortableContext>
+				</DndContext>
 			)}
 
 			<Dialog open={deleteDialogOpen} onOpenChange={(o) => { setDeleteDialogOpen(o); if (!o) setDeleteAccountId(null); }}>

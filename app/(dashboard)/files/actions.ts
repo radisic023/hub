@@ -82,6 +82,23 @@ export async function loadAllFolders(userId: string) {
 	return { data: data ?? [], error: null };
 }
 
+export async function loadAllFiles(userId: string) {
+	const supabase = await createClient();
+	const { data: { user } } = await supabase.auth.getUser();
+	if (!user || user.id !== userId) return { data: [], error: "Unauthorized" };
+
+	const admin = createAdminClient();
+	const { data, error } = await admin
+		.from("files_metadata")
+		.select("id, name, path, is_folder, folder_id, size, mime_type, created_at")
+		.eq("user_id", userId)
+		.order("is_folder", { ascending: false })
+		.order("name");
+
+	if (error) return { data: [], error: error.message };
+	return { data: data ?? [], error: null };
+}
+
 export async function loadFiles(userId: string, folderId: string | null) {
 	const supabase = await createClient();
 	const { data: { user } } = await supabase.auth.getUser();

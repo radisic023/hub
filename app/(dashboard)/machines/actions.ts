@@ -13,6 +13,7 @@ export type MachineData = {
 	password_encrypted: string;
 	port: number;
 	created_at: string;
+	sort_order?: number;
 };
 
 export async function loadMachines() {
@@ -24,8 +25,9 @@ export async function loadMachines() {
 	const admin = createAdminClient();
 	const { data, error } = await admin
 		.from("machines")
-		.select("id, title, hostname, username, password_encrypted, port, created_at")
+		.select("id, title, hostname, username, password_encrypted, port, created_at, sort_order")
 		.eq("user_id", user.id)
+		.order("sort_order", { ascending: true })
 		.order("created_at", { ascending: false });
 
 	if (error) return { data: [], error: error.message };
@@ -89,6 +91,24 @@ export async function updateMachine(id: string, input: Partial<MachineInput>) {
 		.eq("user_id", user.id);
 
 	if (error) return { error: error.message };
+	revalidatePath("/dashboard");
+	revalidatePath("/machines");
+	return { error: null };
+}
+
+export async function updateMachineOrder(ids: string[]) {
+	const supabase = await createClient();
+	const { data: { user } } = await supabase.auth.getUser();
+	if (!user) return { error: "Unauthorized" };
+
+	for (let i = 0; i < ids.length; i++) {
+		const { error } = await supabase
+			.from("machines")
+			.update({ sort_order: i })
+			.eq("id", ids[i])
+			.eq("user_id", user.id);
+		if (error) return { error: error.message };
+	}
 	revalidatePath("/dashboard");
 	revalidatePath("/machines");
 	return { error: null };
