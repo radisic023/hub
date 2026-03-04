@@ -1,25 +1,73 @@
-"use client";
-import { Sidebar } from "@/components/shared/sidebar";
-import { Topbar } from "@/components/shared/topbar";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import type { Metadata } from "next";
 
-export default function DashboardLayout({
+export const dynamic = "force-dynamic";
+import { redirect } from "next/navigation";
+import { ProfileProvider } from "@/components/providers/profile-provider";
+import { DashboardClientLayout } from "@/components/shared/dashboard-client-layout";
+
+export async function generateMetadata(): Promise<Metadata> {
+	const supabase = await createClient();
+	const { data: { user } } = await supabase.auth.getUser();
+	if (!user) return {};
+	const admin = createAdminClient();
+	const { data } = await admin
+		.from("site_settings")
+		.select("title, favicon_path, seo_banner_path")
+		.eq("user_id", user.id)
+		.single();
+	if (!data) return {};
+	const metadata: Metadata = {};
+	if (data.title) metadata.title = data.title;
+	if (data.favicon_path) metadata.icons = { icon: "/api/site-assets/favicon" };
+	if (data.seo_banner_path) {
+		metadata.openGraph = {
+			images: [{ url: "/api/site-assets/banner" }],
+		};
+		metadata.twitter = {
+			card: "summary_large_image",
+			images: ["/api/site-assets/banner"],
+		};
+	}
+	return metadata;
+}
+
+export default async function DashboardLayout({
 	children,
 }: {
 	children: React.ReactNode;
 }) {
+	const supabase = await createClient();
+	const { data: { user } } = await supabase.auth.getUser();
+
+	if (!user) {
+		redirect("/login");
+	}
+
+	const admin = createAdminClient();
+	const [profileRes, siteRes] = await Promise.all([
+		supabase
+			.from("profiles")
+			.select("id, username, email, first_name, last_name, role")
+			.eq("id", user.id)
+			.single(),
+		admin.from("site_settings").select("title").eq("user_id", user.id).single(),
+	]);
+	let profile = profileRes.data;
+	if (!profile) {
+		const p = await admin
+			.from("profiles")
+			.select("id, username, email, first_name, last_name, role")
+			.eq("id", user.id)
+			.single();
+		profile = p.data;
+	}
+	const siteTitle = siteRes.data?.title ?? "Radisic Storage";
 
 	return (
-		<div className="relative flex h-screen overflow-hidden bg-background">
-			{/* Sidebar */}
-			<Sidebar />
-
-			{/* Main Content */}
-			<div className="flex-1 overflow-auto">
-				<Topbar />
-				<main className="p-8 max-w-[calc(100vw-18rem)] mx-auto">
-					<div className="min-h-[calc(100vh-8rem)]">{children}</div>
-				</main>
-			</div>
-		</div>
+		<ProfileProvider profile={profile} userId={user.id}>
+			<DashboardClientLayout siteTitle={siteTitle}>{children}</DashboardClientLayout>
+		</ProfileProvider>
 	);
 }

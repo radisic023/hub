@@ -4,6 +4,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -19,36 +21,51 @@ import {
 	Card,
 	CardContent,
 	CardDescription,
-	CardFooter,
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { LogIn, Mail, Lock } from "lucide-react";
-import Link from "next/link";
+import { LogIn, User, Lock } from "lucide-react";
+import { signInWithUsername } from "@/lib/auth";
 
 const formSchema = z.object({
-	email: z.string().email({
-		message: "Please enter a valid email address.",
+	username: z.string().min(1, {
+		message: "Please enter your username.",
 	}),
-	password: z.string().min(6, {
-		message: "Password must be at least 6 characters.",
+	password: z.string().min(1, {
+		message: "Please enter your password.",
 	}),
 });
 
 export default function LoginPage() {
+	const router = useRouter();
+	const [isLoading, setIsLoading] = useState(false);
+
 	const form = useForm<z.infer<typeof formSchema>>({
 		resolver: zodResolver(formSchema),
 		defaultValues: {
-			email: "",
+			username: "",
 			password: "",
 		},
 	});
 
-	function onSubmit(values: z.infer<typeof formSchema>) {
-		console.log(values);
-		toast.success("Login successful!", {
-			description: "Welcome back! You have been logged in successfully.",
-		});
+	async function onSubmit(values: z.infer<typeof formSchema>) {
+		setIsLoading(true);
+		const { error } = await signInWithUsername(
+			values.username,
+			values.password,
+		);
+		setIsLoading(false);
+
+		if (error) {
+			toast.error("Login failed", {
+				description: error,
+			});
+			return;
+		}
+
+		toast.success("Welcome back!");
+		router.push("/dashboard");
+		router.refresh();
 	}
 
 	return (
@@ -65,16 +82,17 @@ export default function LoginPage() {
 					<form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
 						<FormField
 							control={form.control}
-							name="email"
+							name="username"
 							render={({ field }) => (
 								<FormItem>
-									<FormLabel>Email</FormLabel>
+									<FormLabel>Username</FormLabel>
 									<FormControl>
 										<div className="relative">
-											<Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+											<User className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
 											<Input
-												placeholder="Enter your email"
+												placeholder="Enter your username"
 												className="pl-10"
+												autoComplete="username"
 												{...field}
 											/>
 										</div>
@@ -96,6 +114,7 @@ export default function LoginPage() {
 												type="password"
 												placeholder="Enter your password"
 												className="pl-10"
+												autoComplete="current-password"
 												{...field}
 											/>
 										</div>
@@ -104,31 +123,12 @@ export default function LoginPage() {
 								</FormItem>
 							)}
 						/>
-						<Button type="submit" className="w-full">
-							Sign In
+						<Button type="submit" className="w-full" disabled={isLoading}>
+							{isLoading ? "Signing in..." : "Sign In"}
 						</Button>
 					</form>
 				</Form>
 			</CardContent>
-			<CardFooter className="flex flex-col gap-4">
-				<div className="text-center text-sm">
-					<Link
-						href="/forgot-password"
-						className="text-blue-600 hover:text-blue-800 underline"
-					>
-						Forgot your password?
-					</Link>
-				</div>
-				<div className="text-center text-sm">
-					Don&apos;t have an account?{" "}
-					<Link
-						href="/register"
-						className="text-blue-600 hover:text-blue-800 underline"
-					>
-						Sign up
-					</Link>
-				</div>
-			</CardFooter>
 		</Card>
 	);
 }

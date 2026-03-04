@@ -1,140 +1,67 @@
-# Modern Next.js Dashboard with shadcn/ui
+# Hosting Project App
 
-A modern, responsive dashboard application built with Next.js 14, TypeScript, and shadcn/ui components. This project implements best practices for building scalable web applications with a beautiful UI/UX.
+Dashboard application for managing hosting accounts, files, to-do tasks, and users. Built with Next.js 15, Supabase, and shadcn/ui.
 
-![Dashboard](https://shadcn-nextjs-dashboard.vercel.app/og-image.png)
+## Features
 
-## 🚀 Features
+- **Login** – Username + Password (Supabase Auth)
+- **Dashboard** – Stats cards (Files, Active To-Do, Completed, Accounts)
+- **Files** – Google Drive–like file manager (upload, folders, rename, download)
+- **To-Do** – Tasks with To Do / Done tabs
+- **Accounts** – Store hosting credentials (Link, Username or E-mail, Password)
+- **Users** – Add/delete users with roles (admin, editor, viewer)
 
-- **Modern Tech Stack**: Built with Next.js 14, TypeScript, and Tailwind CSS
-- **Beautiful UI Components**: Utilizes shadcn/ui for consistent and customizable components
-- **Authentication Ready**: Prepared authentication routes and components
-- **Dashboard Layout**: Professional dashboard layout with sidebar navigation
-- **Responsive Design**: Mobile-first approach ensuring great UX across all devices
-- **Type Safety**: Full TypeScript support for better development experience
-- **Performance Optimized**: Built with performance best practices
+## Setup
 
-## 📦 Prerequisites
+### 1. Clone and install
 
-- Node.js 18.17 or later
-- npm or yarn package manager
-
-## 🛠️ Installation
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/naveenda/shacn-nextjs-dashboard.git
-   cd shacn-nextjs-dashboard
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   # or
-   yarn install
-   ```
-
-3. Run the development server:
-   ```bash
-   npm run dev
-   # or
-   yarn dev
-   ```
-
-4. Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-## 📁 Project Structure
-
-```
-├── app/
-│   ├── (auth)/        # Authentication related pages
-│   ├── (dashboard)/   # Dashboard pages and layouts
-│   └── layout.tsx     # Root layout
-├── components/
-│   ├── ui/           # shadcn/ui components
-│   └── shared/       # Shared components
-├── lib/
-│   ├── types/        # TypeScript types/interfaces
-│   └── utils/        # Utility functions
-└── public/
-    └── images/       # Static images
+```bash
+git clone https://github.com/NaveenDA/shadcn-nextjs-dashboard.git .
+npm install
 ```
 
-## 🎨 Customization
+### 2. Supabase
 
-This project uses shadcn/ui components which are fully customizable. You can modify the theme in:
-- `app/globals.css` - For global styles
-- `components.json` - For component configurations
+1. Create a project at [supabase.com](https://supabase.com)
+2. In SQL Editor, run the migration from `supabase/migrations/20240304000001_initial_schema.sql` (creates tables, RLS, storage bucket `files`, and storage policies)
+3. If the storage section fails, create a Storage bucket named `files` (private) manually in the Supabase dashboard
+4. Copy your project URL and keys from Settings → API
 
-## 📚 Documentation
+### 3. Environment
 
-For detailed documentation about the used technologies:
+Create `.env.local`:
 
-- [Next.js Documentation](https://nextjs.org/docs)
-- [shadcn/ui Documentation](https://ui.shadcn.com)
-- [Tailwind CSS Documentation](https://tailwindcss.com/docs)
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+ENCRYPTION_SECRET=your_32_char_secret_for_passwords
+```
 
-## 🤝 Contributing
+### 4. Seed admin user
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+```bash
+npm run db:seed
+```
 
-## ✅ Improvement Checklist
+This creates:
+- **Username:** rade023  
+- **Password:** nikola99  
+- **Email:** radisic00@gmail.com  
+- **Name:** Nikola Radisic  
+- **Role:** admin  
 
-### 📈 Basic Improvements
-- [ ] Add live demo link to deployment
-- [ ] Create proper screenshots/GIFs showcasing key features
-- [ ] Fix repository name typo in clone command (shacn → shadcn)
-- [ ] Add badges (build status, license, version, stars)
-- [ ] Include code coverage metrics
+### 5. Run
 
-### 🚀 Technical Enhancements
-- [ ] Add proper authentication implementation (NextAuth.js)
-- [ ] Implement database integration (Prisma + PostgreSQL/SQLite)
-- [ ] Add real data visualization components (charts/graphs)
-- [ ] Implement search functionality across dashboard
-- [ ] Add data export features (CSV, PDF)
-- [ ] Integrate with external APIs for dynamic content
+```bash
+npm run dev
+```
 
-### 🎨 UI/UX Improvements
-- [ ] Add dark/light mode toggle implementation
-- [ ] Create loading states and skeletons
-- [ ] Implement proper error boundaries and error pages
-- [ ] Add animations and micro-interactions
-- [ ] Improve mobile responsiveness
-- [ ] Add accessibility features (ARIA labels, keyboard navigation)
+Open [http://localhost:3000](http://localhost:3000) and log in with `rade023` / `nikola99`.
 
-### 📚 Documentation & Developer Experience
-- [ ] Add comprehensive component documentation
-- [ ] Create Storybook for component library
-- [ ] Add API documentation
-- [ ] Include deployment guides (Vercel, Netlify, Docker)
-- [ ] Add contributing guidelines
-- [ ] Create issue and PR templates
+## Tech Stack
 
-### 🧪 Testing & Quality
-- [ ] Add unit tests (Jest/Vitest + Testing Library)
-- [ ] Implement E2E tests (Playwright/Cypress)
-- [ ] Add ESLint and Prettier configuration
-- [ ] Set up pre-commit hooks (Husky)
-- [ ] Add GitHub Actions for CI/CD
-- [ ] Include performance monitoring
-
-### 🔧 Advanced Features
-- [ ] Add multi-language support (i18n)
-- [ ] Implement real-time notifications
-- [ ] Add role-based access control
-- [ ] Create admin panel functionality
-- [ ] Add email templates and notifications
-- [ ] Implement file upload/management system
-
-### 📦 Production Ready
-- [ ] Environment variable configuration
-- [ ] Add proper logging system
-- [ ] Implement monitoring and analytics
-- [ ] Add proper SEO optimization
-- [ ] Create production Docker setup
-- [ ] Add security headers and CSRF protection
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+- Next.js 15 (App Router)
+- React 19, TypeScript
+- Supabase (Auth, PostgreSQL, Storage)
+- shadcn/ui, Tailwind CSS

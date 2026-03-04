@@ -56,7 +56,7 @@ export default function ForbiddenPage() {
 							asChild
 							className="text-red-600 hover:text-red-800 hover:bg-red-50"
 						>
-							<Link href="/dashboard/settings">
+							<Link href="/dashboard">
 								<UserCheck className="mr-2 h-4 w-4" />
 								Check Permissions
 							</Link>
