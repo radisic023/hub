@@ -242,7 +242,7 @@ export default function AccountsPage() {
 
 		setOpen(false);
 		setEditId(null);
-		iconInputRef.current && (iconInputRef.current.value = "");
+		if (iconInputRef.current) iconInputRef.current.value = "";
 		form.reset({ link: "", type: "username", username: "", email: "", password: "" });
 		router.refresh();
 		await loadData();
