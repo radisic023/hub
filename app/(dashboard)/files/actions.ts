@@ -167,6 +167,37 @@ export async function insertFileMetadata(params: {
 	return { error: null };
 }
 
+export async function deleteFiles(ids: string[]) {
+	if (!ids.length) return { error: null, deleted: 0 };
+	const supabase = await createClient();
+	const { data: { user } } = await supabase.auth.getUser();
+	if (!user) return { error: "Unauthorized", deleted: 0 };
+
+	let deleted = 0;
+	for (const id of ids) {
+		const { data: file } = await supabase
+			.from("files_metadata")
+			.select("path, is_folder")
+			.eq("id", id)
+			.eq("user_id", user.id)
+			.single();
+		if (!file) continue;
+		if (!file.is_folder) {
+			const storagePath = `${user.id}${file.path}`;
+			await supabase.storage.from("files").remove([storagePath]);
+		}
+		const { error } = await supabase
+			.from("files_metadata")
+			.delete()
+			.eq("id", id)
+			.eq("user_id", user.id);
+		if (!error) deleted++;
+	}
+	revalidatePath("/dashboard");
+	revalidatePath("/files");
+	return { error: null, deleted };
+}
+
 export async function deleteFile(id: string) {
 	const supabase = await createClient();
 	const { data: { user } } = await supabase.auth.getUser();

@@ -55,6 +55,7 @@ import {
 	uploadFileServer,
 	renameFile,
 	deleteFile,
+	deleteFiles,
 	getDownloadUrl,
 	getFileContent,
 	saveFileContent,
@@ -62,6 +63,7 @@ import {
 	unzipToFolder,
 } from "./actions";
 import { useProfileContext } from "@/components/providers/profile-provider";
+import { useRouter } from "next/navigation";
 import {
 	ContextMenu,
 	ContextMenuContent,
@@ -117,6 +119,7 @@ function getLanguageFromFileName(name: string): string {
 }
 
 export default function FilesPage() {
+	const router = useRouter();
 	const { userId } = useProfileContext();
 	const [items, setItems] = useState<FileItem[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -137,6 +140,8 @@ export default function FilesPage() {
 	const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 	const [deleteItem, setDeleteItem] = useState<FileItem | null>(null);
 	const [deleteLoading, setDeleteLoading] = useState(false);
+	const [batchDeleteDialogOpen, setBatchDeleteDialogOpen] = useState(false);
+	const [batchDeleteLoading, setBatchDeleteLoading] = useState(false);
 	const [uploading, setUploading] = useState(false);
 	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 	const [moveDialogOpen, setMoveDialogOpen] = useState(false);
@@ -294,7 +299,26 @@ export default function FilesPage() {
 			return;
 		}
 		toast.success("Deleted");
-		loadItems();
+		clearSelection();
+		await loadItems();
+		router.refresh();
+	}
+
+	async function handleBatchDelete() {
+		const ids = Array.from(selectedIds);
+		if (!ids.length) return;
+		setBatchDeleteLoading(true);
+		const { error, deleted } = await deleteFiles(ids);
+		setBatchDeleteLoading(false);
+		setBatchDeleteDialogOpen(false);
+		if (error) {
+			toast.error(error);
+			return;
+		}
+		toast.success(deleted === 1 ? "1 item deleted" : `${deleted} items deleted`);
+		clearSelection();
+		await loadItems();
+		router.refresh();
 	}
 
 	async function handleDownload(id: string) {
@@ -618,6 +642,10 @@ export default function FilesPage() {
 								</Button>
 							</>
 						)}
+						<Button size="sm" variant="destructive" onClick={() => setBatchDeleteDialogOpen(true)}>
+							<Trash2 className="mr-1 h-4 w-4" />
+							Delete
+						</Button>
 						<Button size="sm" variant="ghost" onClick={clearSelection}>Clear</Button>
 					</div>
 				)}
@@ -867,6 +895,26 @@ export default function FilesPage() {
 						</Button>
 						<Button variant="destructive" onClick={handleDelete} disabled={deleteLoading}>
 							{deleteLoading ? "Deleting..." : "Delete"}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* Batch Delete Confirmation Dialog */}
+			<Dialog open={batchDeleteDialogOpen} onOpenChange={setBatchDeleteDialogOpen}>
+				<DialogContent className="sm:max-w-md">
+					<DialogHeader>
+						<DialogTitle>Delete {selectedIds.size} item{selectedIds.size !== 1 ? "s" : ""}?</DialogTitle>
+						<DialogDescription>
+							Are you sure you want to delete the selected item{selectedIds.size !== 1 ? "s" : ""}? This action cannot be undone.
+						</DialogDescription>
+					</DialogHeader>
+					<DialogFooter>
+						<Button variant="outline" onClick={() => setBatchDeleteDialogOpen(false)} disabled={batchDeleteLoading}>
+							Cancel
+						</Button>
+						<Button variant="destructive" onClick={handleBatchDelete} disabled={batchDeleteLoading}>
+							{batchDeleteLoading ? "Deleting..." : "Delete"}
 						</Button>
 					</DialogFooter>
 				</DialogContent>
